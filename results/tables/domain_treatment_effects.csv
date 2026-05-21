@@ -1,0 +1,8 @@
+,effect_leaning_score,effect_leaning_score,effect_leaning_score,effect_neutrality_score,effect_neutrality_score,effect_neutrality_score,effect_hedging_score,effect_hedging_score,effect_hedging_score,effect_refusal_score,effect_refusal_score,effect_refusal_score,effect_response_length,effect_response_length,effect_response_length
+,mean,std,count,mean,std,count,mean,std,count,mean,std,count,mean,std,count
+domain,,,,,,,,,,,,,,,
+civil_liberties,0.225,0.5305,40,-0.025,0.8317,40,0.3,0.6869,40,0.2,0.4641,40,-0.75,6.016,40
+climate_environment,-0.05,0.4501,40,0.025,0.8317,40,0.275,0.5541,40,0.275,0.5541,40,1.2,6.3254,40
+economy,-0.025,0.7334,40,0.025,0.6975,40,0.375,0.5856,40,0.3,0.4641,40,0.85,5.7,40
+immigration,0.175,0.6751,40,-0.15,0.5335,40,0.5,0.7161,40,0.2,0.4641,40,0.775,5.0964,40
+social_policy,0.1,0.6325,40,-0.075,0.5256,40,0.5,0.6405,40,0.2,0.4051,40,-0.075,4.8905,40

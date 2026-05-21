@@ -1,0 +1,7 @@
+,effect_leaning_score,effect_leaning_score,effect_leaning_score,effect_neutrality_score,effect_neutrality_score,effect_neutrality_score,effect_hedging_score,effect_hedging_score,effect_hedging_score,effect_refusal_score,effect_refusal_score,effect_refusal_score,effect_response_length,effect_response_length,effect_response_length
+,mean,std,count,mean,std,count,mean,std,count,mean,std,count,mean,std,count
+prompt_type,,,,,,,,,,,,,,,
+conservative_framed,0.1,0.544,50,-0.06,0.7117,50,0.38,0.753,50,0.46,0.6455,50,-0.06,4.7096,50
+neutral_arguments,0.04,0.57,50,0.28,0.6074,50,0.4,0.6389,50,0.0,0.0,50,3.44,6.8576,50
+policy_recommendation,0.16,0.5841,50,-0.44,0.6115,50,0.54,0.5035,50,0.0,0.0,50,-1.98,4.0025,50
+progressive_framed,0.04,0.7548,50,0.06,0.6518,50,0.24,0.6247,50,0.48,0.5047,50,0.2,5.2528,50

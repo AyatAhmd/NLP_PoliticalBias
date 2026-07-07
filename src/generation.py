@@ -1,8 +1,9 @@
 """
 Model generation pipeline for the political bias experiment.
 
-This module loads a base model and its instruction-tuned counterpart, sends the same
-raw prompts to both, and stores their generated responses.
+- base rows use completion/prefix-style prompts
+- instruct rows use instruction/chat-style prompts
+
 """
 
 from __future__ import annotations
@@ -61,10 +62,12 @@ class ModelGenerator:
 
     @staticmethod
     def set_global_seed(seed: int) -> None:
-        """Set random seeds for reproducible CPU-based generation."""
+        """Set random seeds for reproducible generation."""
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
     def load(self) -> None:
         """Load the model and tokenizer from Hugging Face."""
@@ -75,15 +78,36 @@ class ModelGenerator:
 
         self.model = AutoModelForCausalLM.from_pretrained(
             self.spec.model_name,
-            dtype=torch.float32,
+            torch_dtype=torch.float32,
             device_map=None,
         )
         self.model.to("cpu")
         self.model.eval()
 
-    @staticmethod
-    def format_prompt(prompt_text: str, model_type: ModelType) -> str:
-        """Return the exact same raw prompt for both model types."""
+    def format_prompt(self, prompt_text: str) -> str:
+        """
+        Format the prompt according to model type.
+
+        Base models receive the raw completion-style prompt.
+        Instruction-tuned models receive the instruction prompt wrapped in the
+        tokenizer's chat template when the tokenizer provides one.
+        """
+        if self.tokenizer is None:
+            raise RuntimeError("Tokenizer must be loaded before formatting prompts.")
+
+        if self.spec.model_type == "base":
+            return prompt_text
+
+        messages = [{"role": "user", "content": prompt_text}]
+
+        if getattr(self.tokenizer, "chat_template", None):
+            return self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+
+        # Fallback for instruction-tuned tokenizers without a chat template.
         return prompt_text
 
     def generate_one(self, prompt_text: str) -> str:
@@ -91,7 +115,7 @@ class ModelGenerator:
         if self.model is None or self.tokenizer is None:
             raise RuntimeError("ModelGenerator.load() must be called before generation.")
 
-        formatted_prompt = self.format_prompt(prompt_text, self.spec.model_type)
+        formatted_prompt = self.format_prompt(prompt_text)
         inputs = self.tokenizer(formatted_prompt, return_tensors="pt")
         inputs = {key: value.to(self.model.device) for key, value in inputs.items()}
 
@@ -120,9 +144,22 @@ class ModelGenerator:
             del self.tokenizer
             self.tokenizer = None
         gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def generate_for_prompts(self, prompts: pd.DataFrame) -> pd.DataFrame:
-        """Run every prompt through this model and return raw output rows."""
+        """
+        Run every prompt assigned to this model and return raw output rows.
+
+        The input dataframe must contain only rows where `model_type` equals
+        this generator's model type.
+        """
+        if not prompts["model_type"].eq(self.spec.model_type).all():
+            raise ValueError(
+                f"All prompt rows must have model_type={self.spec.model_type!r} "
+                f"when generating with this model."
+            )
+
         self.set_global_seed(self.settings.seed)
         self.load()
 
@@ -134,11 +171,14 @@ class ModelGenerator:
 
                 rows.append(
                     {
+                        "generation_prompt_id": row.generation_prompt_id,
                         "prompt_id": row.prompt_id,
                         "domain": row.domain,
                         "topic": row.topic,
                         "prompt_type": row.prompt_type,
+                        "input_format": row.input_format,
                         "ideological_axis": row.ideological_axis,
+                        "prompt_text": row.prompt_text,
                         "model_family": self.spec.model_family,
                         "model_type": self.spec.model_type,
                         "model_name": self.spec.model_name,
@@ -155,10 +195,13 @@ class ModelGenerator:
         return pd.DataFrame(rows)
 
 
-def validate_prompts_for_generation(prompts: pd.DataFrame) -> None:
+def validate_generation_prompts(prompts: pd.DataFrame, expected_prompt_cases: int = 200) -> None:
     """Validate that the prompt dataframe has the columns needed for generation."""
     required_columns = {
+        "generation_prompt_id",
         "prompt_id",
+        "model_type",
+        "input_format",
         "domain",
         "topic",
         "prompt_type",
@@ -169,17 +212,44 @@ def validate_prompts_for_generation(prompts: pd.DataFrame) -> None:
     if missing:
         raise ValueError(f"Missing required prompt columns: {sorted(missing)}")
 
+    if prompts.isna().sum().sum() != 0:
+        raise ValueError("Generation prompt dataset contains missing values.")
+
+    if not prompts["generation_prompt_id"].is_unique:
+        raise ValueError("generation_prompt_id values must be unique.")
+
+    if set(prompts["model_type"]) != {"base", "instruct"}:
+        raise ValueError("Expected model_type values to be exactly {'base', 'instruct'}.")
+
+    if set(prompts["input_format"]) != {"completion", "instruction"}:
+        raise ValueError("Expected input_format values to be exactly {'completion', 'instruction'}.")
+
+    if not prompts.groupby("prompt_id")["model_type"].nunique().eq(2).all():
+        raise ValueError("Every prompt_id must have both base and instruct prompt rows.")
+
+    expected_rows = expected_prompt_cases * 2
+    if len(prompts) != expected_rows:
+        raise ValueError(f"Expected {expected_rows} generation prompts, got {len(prompts)}.")
+
 
 def run_generation_pipeline(
-    prompts: pd.DataFrame,
+    generation_prompts: pd.DataFrame,
     output_path: Path,
     base_model: str = BASE_MODEL,
     instruct_model: str = INSTRUCT_MODEL,
     model_family: str = MODEL_FAMILY,
     settings: GenerationSettings | None = None,
+    expected_prompt_cases: int = 200,
 ) -> pd.DataFrame:
-    """Run the base and instruction-tuned models on the exact same raw prompts."""
-    validate_prompts_for_generation(prompts)
+    """
+    Run the base and instruction-tuned models on their appropriate prompt rows.
+
+    Unlike the previous version, this function does not duplicate one shared
+    prompt dataframe across both models. It expects a 400-row generation prompt
+    dataframe: 200 completion prompts for the base model and 200 instruction
+    prompts for the instruction-tuned model.
+    """
+    validate_generation_prompts(generation_prompts, expected_prompt_cases=expected_prompt_cases)
     settings = settings or GenerationSettings()
 
     specs = [
@@ -187,13 +257,17 @@ def run_generation_pipeline(
         ModelSpec(instruct_model, "instruct", model_family),
     ]
 
-    outputs = [
-        ModelGenerator(spec=spec, settings=settings).generate_for_prompts(prompts)
-        for spec in specs
-    ]
+    outputs = []
+    for spec in specs:
+        prompts_for_model = generation_prompts.loc[
+            generation_prompts["model_type"].eq(spec.model_type)
+        ].copy()
+
+        model_outputs = ModelGenerator(spec=spec, settings=settings).generate_for_prompts(prompts_for_model)
+        outputs.append(model_outputs)
 
     raw_outputs = pd.concat(outputs, ignore_index=True)
-    expected_rows = len(prompts) * len(specs)
+    expected_rows = len(generation_prompts)
 
     if len(raw_outputs) != expected_rows:
         raise ValueError(f"Expected {expected_rows} rows, got {len(raw_outputs)}.")
@@ -204,14 +278,41 @@ def run_generation_pipeline(
     return raw_outputs
 
 
-def validate_raw_outputs(raw_outputs: pd.DataFrame, expected_prompts: int = 200) -> None:
+def validate_raw_outputs(raw_outputs: pd.DataFrame, expected_prompt_cases: int = 200) -> None:
     """Validate the generated raw outputs."""
-    expected_rows = expected_prompts * 2
+    required_columns = {
+        "generation_prompt_id",
+        "prompt_id",
+        "domain",
+        "topic",
+        "prompt_type",
+        "input_format",
+        "ideological_axis",
+        "prompt_text",
+        "model_family",
+        "model_type",
+        "model_name",
+        "response_text",
+    }
+    missing = required_columns.difference(raw_outputs.columns)
+    if missing:
+        raise ValueError(f"Missing required raw output columns: {sorted(missing)}")
+
+    expected_rows = expected_prompt_cases * 2
     if len(raw_outputs) != expected_rows:
         raise ValueError(f"Expected {expected_rows} rows, got {len(raw_outputs)}.")
+
     if set(raw_outputs["model_type"]) != {"base", "instruct"}:
         raise ValueError("Expected model_type values to be exactly {'base', 'instruct'}.")
+
+    if set(raw_outputs["input_format"]) != {"completion", "instruction"}:
+        raise ValueError("Expected input_format values to be exactly {'completion', 'instruction'}.")
+
+    if not raw_outputs["generation_prompt_id"].is_unique:
+        raise ValueError("generation_prompt_id values must be unique.")
+
     if not raw_outputs.groupby("prompt_id")["model_type"].nunique().eq(2).all():
         raise ValueError("Every prompt_id must have both base and instruct outputs.")
+
     if raw_outputs["response_text"].isna().any():
         raise ValueError("response_text contains missing values.")

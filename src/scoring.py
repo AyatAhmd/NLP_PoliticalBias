@@ -31,11 +31,32 @@ import numpy as np
 import pandas as pd
 
 
-REQUIRED_RAW_COLUMNS = {
-    "prompt_id",
-    "model_type",
-    "model_name",
-    "response_text",
+REQUIRED_RAW_COLUMNS = {"response_text"}
+
+STORY_COLUMNS = {
+    "left": {
+        "title": "left_story_title",
+        "text": "left_story_text",
+        "url": "left_story_url",
+    },
+    "center": {
+        "title": "center_story_title",
+        "text": "center_story_text",
+        "url": "center_story_url",
+    },
+    "right": {
+        "title": "right_story_title",
+        "text": "right_story_text",
+        "url": "right_story_url",
+    },
+}
+
+ROUNDUP_COLUMN_RENAMES = {
+    "Title of Headline Roundup": "roundup_title",
+    "description": "roundup_description",
+    "Topics": "topic",
+    "Date": "date",
+    "url_story": "roundup_url",
 }
 
 HEDGING_ANCHORS = [

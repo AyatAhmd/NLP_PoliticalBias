@@ -38,50 +38,6 @@ REQUIRED_RAW_COLUMNS = {
     "response_text",
 }
 
-LABEL_ALIASES = {
-    "left": "left",
-    "left-center": "left",
-    "left_center": "left",
-    "liberal": "left",
-    "progressive": "left",
-    "democrat": "left",
-    "democratic": "left",
-    "center": "center",
-    "centre": "center",
-    "neutral": "center",
-    "middle": "center",
-    "least biased": "center",
-    "least-biased": "center",
-    "right": "right",
-    "right-center": "right",
-    "right_center": "right",
-    "conservative": "right",
-    "republican": "right",
-}
-
-TEXT_COLUMN_CANDIDATES = [
-    "article",
-    "article_text",
-    "text",
-    "content",
-    "body",
-    "full_text",
-    "description",
-    "summary",
-]
-
-LABEL_COLUMN_CANDIDATES = [
-    "bias",
-    "label",
-    "leaning",
-    "political_leaning",
-    "source_bias",
-    "media_bias",
-    "bias_text",
-    "ideology",
-    "category",
-]
-
 HEDGING_ANCHORS = [
     "This issue may depend on context, implementation, and the groups affected by the policy.",
     "There are possible benefits and drawbacks, and the outcome could vary across cases.",
